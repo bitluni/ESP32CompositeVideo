@@ -49,7 +49,7 @@ class Mesh
       {
         char c;
         if(tTriNormals)
-          c = tTriNormals[i][1] / 10 + 20;
+          c = tTriNormals[i][1] / 10 + 30;
         else
           c = i % 40;
         g.enqueueTriangle(tvertices[triangles[i][0]], tvertices[triangles[i][1]], tvertices[triangles[i][2]], c);

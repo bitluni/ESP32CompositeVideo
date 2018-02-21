@@ -2,48 +2,58 @@
 #include "Font.h"
 #include "TriangleTree.h"
 
-class AVGraphics
+class CompositeGraphics
 { 
   public:
-  int width;
-  int height;
+  int xres;
+  int yres;
   char **frame;
   char **backbuffer;
   char **zbuffer;
   int cursorX, cursorY, cursorBaseX;
-  Font<AVGraphics> *font;
+  int frontColor, backColor;
+  Font<CompositeGraphics> *font;
   
-  TriangleTree<AVGraphics> *triangleBuffer;
-  TriangleTree<AVGraphics> *triangleRoot;
+  TriangleTree<CompositeGraphics> *triangleBuffer;
+  TriangleTree<CompositeGraphics> *triangleRoot;
   int trinagleBufferSize;
   int triangleCount;
 
-  AVGraphics(int w, int h, int initialTrinagleBufferSize = 0)
-    :width(w), 
-    height(h)
+  CompositeGraphics(int w, int h, int initialTrinagleBufferSize = 0)
+    :xres(w), 
+    yres(h)
   {
     font = 0;
     cursorX = cursorY = cursorBaseX = 0;
     trinagleBufferSize = initialTrinagleBufferSize;
     triangleCount = 0;
+    frontColor = 50;
+    backColor = -1;
+  }
+
+  void setTextColor(int front, int back = -1)
+  {
+    //-1 = transparent back;
+    frontColor = front;
+    backColor = back;
   }
   
   void init()
   {
-    frame = (char**)malloc(height * sizeof(char*));
-    backbuffer = (char**)malloc(height * sizeof(char*));
+    frame = (char**)malloc(yres * sizeof(char*));
+    backbuffer = (char**)malloc(yres * sizeof(char*));
     //not enough memory for z-buffer implementation
-    //zbuffer = (char**)malloc(height * sizeof(char*));
-    for(int y = 0; y < height; y++)
+    //zbuffer = (char**)malloc(yres * sizeof(char*));
+    for(int y = 0; y < yres; y++)
     {
-      frame[y] = (char*)malloc(width);
-      backbuffer[y] = (char*)malloc(width);
-      //zbuffer[y] = (char*)malloc(width);
+      frame[y] = (char*)malloc(xres);
+      backbuffer[y] = (char*)malloc(xres);
+      //zbuffer[y] = (char*)malloc(xres);
     }
-    triangleBuffer = (TriangleTree<AVGraphics>*)malloc(sizeof(TriangleTree<AVGraphics>) * trinagleBufferSize);
+    triangleBuffer = (TriangleTree<CompositeGraphics>*)malloc(sizeof(TriangleTree<CompositeGraphics>) * trinagleBufferSize);
   }
 
-  void setFont(Font<AVGraphics> &font)
+  void setFont(Font<CompositeGraphics> &font)
   {
     this->font = &font;
   }
@@ -54,15 +64,15 @@ class AVGraphics
     cursorY = y;  
   }
   
-  void print(char *str, char color)
+  void print(char *str)
   {
     if(!font) return;
     while(*str)
     {
       if(*str >= 32 && *str < 128)
-        font->drawChar(*this, cursorX, cursorY, *str, color);
+        font->drawChar(*this, cursorX, cursorY, *str, frontColor, backColor);
       cursorX += font->xres;
-      if(cursorX + font->xres > width || *str == '\n')
+      if(cursorX + font->xres > xres || *str == '\n')
       {
         cursorX = cursorBaseX;
         cursorY += font->yres;        
@@ -71,7 +81,7 @@ class AVGraphics
     }
   }
   
-  void print(int number, char color, int base = 10, int minCharacters = 1)
+  void print(int number, int base = 10, int minCharacters = 1)
   {
     bool sign = number < 0;
     if(sign) number = -number;
@@ -88,15 +98,15 @@ class AVGraphics
       temp[i--] = '-';
     for(;i > 31 - minCharacters; i--)
       temp[i] = ' ';
-    print(&temp[i + 1], color);
+    print(&temp[i + 1]);
   }
 
-  inline void begin(bool clear = true, bool clearZ = true)
+  inline void begin(int clear = -1, bool clearZ = true)
   {
-    if(clear)
-      for(int y = 0; y < height; y++)
-        for(int x = 0; x < width; x++)
-          backbuffer[y][x] = 0;
+    if(clear > -1)
+      for(int y = 0; y < yres; y++)
+        for(int x = 0; x < xres; x++)
+          backbuffer[y][x] = clear;
     triangleCount = 0;
     triangleRoot = 0;
   }
@@ -108,10 +118,23 @@ class AVGraphics
   
   inline void dot(int x, int y, char color)
   {
-    if((unsigned int)x < width && (unsigned int)y < height)
+    if((unsigned int)x < xres && (unsigned int)y < yres)
       backbuffer[y][x] = color;
   }
-
+  
+  inline void dotAdd(int x, int y, char color)
+  {
+    if((unsigned int)x < xres && (unsigned int)y < yres)
+      backbuffer[y][x] = min(54, color + backbuffer[y][x]);
+  }
+  
+  inline char get(int x, int y)
+  {
+    if((unsigned int)x < xres && (unsigned int)y < yres)
+      return backbuffer[y][x];
+    return 0;
+  }
+    
   inline void xLine(int x0, int x1, int y, char color)
   {
     if(x0 > x1)
@@ -121,16 +144,15 @@ class AVGraphics
       x1 = xb;
     }
     if(x0 < 0) x0 = 0;
-    if(x1 > width) x1 = width;
+    if(x1 > xres) x1 = xres;
     for(int x = x0; x < x1; x++)
       dotFast(x, y, color);
   }
 
   void enqueueTriangle(short *v0, short *v1, short *v2, char color)
   {
-    //if(triangleCount > 1000) return;
-    //if(triangleCount >= )
-    TriangleTree<AVGraphics> &t = triangleBuffer[triangleCount++];
+    if(triangleCount >= trinagleBufferSize) return;
+    TriangleTree<CompositeGraphics> &t = triangleBuffer[triangleCount++];
     t.set(v0, v1, v2, color);
     if(triangleRoot)
       triangleRoot->add(&triangleRoot, t);
@@ -167,14 +189,14 @@ class AVGraphics
     if(v[2][1] != v[1][1])
       xbci = ((v[2][0] - v[1][0]) << 16) / (v[2][1] - v[1][1]);
 
-    for(; y < v[1][1] && y < height; y++)
+    for(; y < v[1][1] && y < yres; y++)
     {
       if(y >= 0)
         xLine(xab >> 16, xac >> 16, y, color);
       xab += xabi;
       xac += xaci;
     }
-    for(; y < v[2][1] && y < height; y++)
+    for(; y < v[2][1] && y < yres; y++)
     {
       if(y >= 0)
         xLine(xbc >> 16, xac >> 16, y, color);
@@ -268,13 +290,46 @@ class AVGraphics
     }
   }
   
-  inline void end()
+  inline void flush()
   {
     if(triangleRoot)
       triangleRoot->draw(*this);
+  }
+
+  inline void end()
+  {
     char **b = backbuffer;
     backbuffer = frame;
-    frame = b;
+    frame = b;    
+  }
+
+  void fillRect(int x, int y, int w, int h, int color)
+  {
+    if(x < 0)
+    {
+      w += x;
+      x = 0;
+    }
+    if(y < 0)
+    {
+      h += y;
+      y = 0;
+    }
+    if(x + w > xres)
+      w = xres - x;
+    if(y + h > yres)
+      h = yres - y;
+    for(int j = y; j < y + h; j++)
+      for(int i = x; i < x + w; i++)
+        dotFast(i, j, color);
+  }
+
+  void rect(int x, int y, int w, int h, int color)
+  {
+    fillRect(x, y, w, 1, color);
+    fillRect(x, y, 1, h, color);
+    fillRect(x, y + h - 1, w, 1, color);
+    fillRect(x + w - 1, y, 1, h, color);
   }
 };
 

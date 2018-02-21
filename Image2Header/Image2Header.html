@@ -1,0 +1,66 @@
+<head>
+<script>
+function canvasToText(ctx, xres, yres, grayscale, grayvalues, name)
+{
+	var imgData = ctx.getImageData(0, 0, xres, yres);		
+	var pixels = imgData.data;		
+	var text = "namespace " + name + " \r\n{\r\n";
+			
+	text += "const unsigned int xres = " + imgData.width + ";\r\n";
+	text += "const unsigned int yres = " + imgData.height + ";\r\n";
+	text += "const unsigned char pixels[] = {"
+
+	for(var i = 0; i < pixels.length; i += 4)
+	{
+		if((i & 63) == 0) text += "\r\n";
+		var y = Math.round(pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722);
+		pixels[i] = pixels[i + 1] = pixels[i + 2] = y;
+		text += Math.round(y * grayvalues / 255) + ", ";
+	}	
+	text += "};\r\n";
+	text += "};\r\n";
+	
+	ctx.putImageData(imgData, 348, 220);	
+	return text;
+}
+
+function convert(event)
+{
+	var audioBuffer = null;
+	var reader = new FileReader();
+	var file = event.target.files[0];
+	reader.onload = function(){
+	    var img = document.createElement("img");
+		img.onload = function()
+		{
+			var canvas = document.querySelector('canvas');
+			var ctx = canvas.getContext('2d');
+			canvas.width = img.width;
+			canvas.height = img.height;
+			ctx.drawImage(img, 0, 0, img.width, img.height);
+			var link = document.createElement("a");
+			var name = file.name.split('.', 1)[0];
+			link.download = name + ".h";
+			link.href = URL.createObjectURL(new Blob(
+			[canvasToText(ctx, canvas.width, canvas.height, document.querySelector("#grayscale").checked, document.querySelector("#grayvalues").value, name)], {type: "text/plain"}));
+			document.body.appendChild(document.createElement("br"));
+			document.body.appendChild(link);
+			link.innerHTML = link.download;
+			link.click();
+			//document.body.removeChild(link);
+			event.target.value = "";
+		}
+		img.src = reader.result;
+	}
+	if(file)
+		reader.readAsDataURL(file);
+}
+</script>
+</head>
+<body style="font-family: arial">
+<h1><a href="https://youtube.com/bitlunislab">bitluni</a>'s image to header converter</h1>
+Open an image file to convert it to a c++ header file.<br><br>
+<input type="file" onchange="convert(event)"><br><br>
+Export: <input id="grayscale" type="checkbox" checked>grayscale <input id="grayvalues" value="255"><br>
+<canvas width="348px" height="220px" ></canvas><br>
+</body></html>
