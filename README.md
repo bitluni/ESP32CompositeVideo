@@ -1,9 +1,9 @@
 # ESP32CompositeVideo
 
-This is a simple project showing how to generate a composite video signal using the ESP32
+This is a simple project showing how to generate a composite video signal using the ESP32.
 
-Image2Header converts image files to c++ headers
-StlConverter2 converts image files to c++ headers
+Image2Header converts image files to c++ headers.
+StlConverter2 converts image files to c++ headers.
 
 CompositeVideo shows how to render a 3D mesh and display it on composite.
 CompositeVideoSimple shows the simple graphics functions except for 3D currently avaialable.
