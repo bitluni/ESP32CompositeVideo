@@ -271,6 +271,7 @@ class CompositeOutput
     i = 0;
     fillShort(i); fillShort(i);
     sendLine(); sendLine();
+    i = 0;
     fillShort(i); fillValues(i, levelBlank, samplesLine / 2);
     sendLine();
 
