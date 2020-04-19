@@ -1,4 +1,5 @@
 //code by bitluni (send me a high five if you like the code)
+#include "esp_pm.h"
 
 #include "CompositeGraphics.h"
 #include "Image.h"
@@ -30,7 +31,9 @@ Font<CompositeGraphics> font(6, 8, font6x8::pixels);
 void setup()
 {
   //highest clockspeed needed
-  rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);
+  esp_pm_lock_handle_t powerManagementLock;
+  esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "compositeCorePerformanceLock", &powerManagementLock);
+  esp_pm_lock_acquire(powerManagementLock);
   
   //initializing DMA buffers and I2S
   composite.init();
@@ -40,7 +43,7 @@ void setup()
   graphics.setFont(font);
 
   //running composite output pinned to first core
-  xTaskCreatePinnedToCore(compositeCore, "c", 1024, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(compositeCore, "compositeCoreTask", 1024, NULL, 1, NULL, 0);
   //rendering the actual graphics in the main loop is done on the second core by default
 }
 
@@ -97,5 +100,3 @@ void loop()
 {
   draw();
 }
-
-

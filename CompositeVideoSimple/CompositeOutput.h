@@ -181,7 +181,15 @@ class CompositeOutput
 
   void sendLine()
   {
-    i2s_write_bytes(I2S_PORT, (char*)line, samplesLine * sizeof(unsigned short), portMAX_DELAY);
+    esp_err_t error = ESP_OK;
+    size_t bytes_written = 0;
+    size_t bytes_to_write = samplesLine * sizeof(unsigned short);
+    size_t cursor = 0;
+    while (error == ESP_OK && bytes_to_write > 0) {
+      error = i2s_write(I2S_PORT, (const char *)line + cursor, bytes_to_write, &bytes_written, portMAX_DELAY);
+      bytes_to_write -= bytes_written;
+      cursor += bytes_written;
+    }
   }
 
   inline void fillValues(int &i, unsigned char value, int count)
@@ -295,5 +303,3 @@ class CompositeOutput
     sendLine(); sendLine();
   }
 };
-
-
