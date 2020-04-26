@@ -26,7 +26,8 @@ typedef struct
 // 1Vp-p = 140*IRE
 const double IRE = 1.0 / 140.0;
 
-// Timings: http://martin.hinner.info/vga/pal.html
+// Timings: http://www.batsocks.co.uk/readme/video_timing.htm
+// http://martin.hinner.info/vga/pal.html
 // Also interesting: https://wiki.nesdev.com/w/index.php/NTSC_video
 
 const TechProperties PALProperties = {
@@ -75,7 +76,7 @@ class CompositeOutput
 {
   public:
   int samplesLine;
-  int samplesSync;
+  int samplesHSync;
   int samplesBlank;
   int samplesBack;
   int samplesActive;
@@ -129,8 +130,11 @@ class CompositeOutput
 
     linesOdd = properties.lines / 2;
     linesEven = properties.lines - linesOdd;
+    
     linesEvenActive = linesEven - properties.linesFirstTop - linesSyncBottom;
+    
     linesOddActive = linesOdd - properties.linesFirstTop - linesSyncBottom;
+    
     linesEvenVisible = linesEvenActive - properties.linesOverscanTop - properties.linesOverscanBottom; 
     linesOddVisible = linesOddActive - properties.linesOverscanTop - properties.linesOverscanBottom;
 
@@ -146,10 +150,14 @@ class CompositeOutput
     double samplesPerSecond = 160000000.0 / 3.0 / 2.0 / 2.0;
     double samplesPerMicro = samplesPerSecond * 0.000001;
     samplesLine = (int)(samplesPerMicro * properties.lineMicros + 1.5) & ~1;
-    samplesSync = samplesPerMicro * properties.syncMicros + 0.5;
+    // 4.7 µS HSync
+    samplesHSync = samplesPerMicro * properties.syncMicros + 0.5;
+    // Back Porch
     samplesBlank = samplesPerMicro * (properties.blankEndMicros - properties.syncMicros + properties.overscanLeftMicros) + 0.5;
+    // Front Porch
     samplesBack = samplesPerMicro * (properties.backMicros + properties.overscanRightMicros) + 0.5;
-    samplesActive = samplesLine - samplesSync - samplesBlank - samplesBack;
+    // Picture Data
+    samplesActive = samplesLine - samplesHSync - samplesBlank - samplesBack;
 
     targetXres = xres < samplesActive ? xres : samplesActive;
 
@@ -215,7 +223,7 @@ class CompositeOutput
   {
     int i = 0;
     // HSync
-    fillValues(i, levelSync, samplesSync);
+    fillValues(i, levelSync, samplesHSync);
     // Back Porch
     fillValues(i, levelBlank, samplesBlank);
     // Black left (image centering)
@@ -248,7 +256,7 @@ class CompositeOutput
   void fillBlank()
   {
     int i = 0;
-    fillValues(i, levelSync, samplesSync);
+    fillValues(i, levelSync, samplesHSync);
     fillValues(i, levelBlank, samplesBlank);
     fillValues(i, levelBlack, samplesActive);
     fillValues(i, levelBlank, samplesBack);
@@ -257,8 +265,8 @@ class CompositeOutput
   void fillHalfBlank()
   {
     int i = 0;
-    fillValues(i, levelSync, samplesSync);
-    fillValues(i, levelBlank, samplesLine / 2 - samplesSync);  
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesLine / 2 - samplesHSync);  
   }
   
   void sendFrameHalfResolution(char ***frame)
