@@ -10,16 +10,24 @@ typedef struct
   float shortVSyncMicros;
   float overscanLeftMicros; 
   float overscanRightMicros; 
-  float syncVolts; 
-  float blankVolts; 
-  float blackVolts;
-  float whiteVolts;
+  double syncVolts; 
+  double blankVolts; 
+  double blackVolts;
+  double whiteVolts;
   short lines;
   short linesFirstTop;
   short linesOverscanTop;
   short linesOverscanBottom;
   float imageAspect;
 }TechProperties;
+
+// Levels: see https://www.maximintegrated.com/en/design/technical-documents/tutorials/7/734.html
+// Used for sync, blank, black, white levels.
+// 1Vp-p = 140*IRE
+const double IRE = 1.0 / 140.0;
+
+// Timings: http://martin.hinner.info/vga/pal.html
+// Also interesting: https://wiki.nesdev.com/w/index.php/NTSC_video
 
 const TechProperties PALProperties = {
   .lineMicros = 64,
@@ -41,17 +49,21 @@ const TechProperties PALProperties = {
 };
 
 const TechProperties NTSCProperties = {
+  // Duration of a line
   .lineMicros = 63.492,
+  // HSync
   .syncMicros = 4.7,
   .blankEndMicros = 9.2,
+  // Front porch
   .backMicros = 1.5,
-  .shortVSyncMicros = 2.3,   
+  // Half HSync (Short sync pulse)
+  .shortVSyncMicros = 2.35,
   .overscanLeftMicros = 0,//1.3, 
-  .overscanRightMicros = 0,//1, 
-  .syncVolts = -0.286,
-  .blankVolts = 0.0, 
-  .blackVolts = 0.05, //specs 0.054,
-  .whiteVolts = 0.714,  
+  .overscanRightMicros = 0,//1,
+  .syncVolts = -40.0 * IRE,
+  .blankVolts = 0.0 * IRE,
+  .blackVolts = 7.5 * IRE,
+  .whiteVolts = 100.0 * IRE,
   .lines = 525,
   .linesFirstTop = 20,
   .linesOverscanTop = 6,
@@ -198,19 +210,26 @@ class CompositeOutput
       line[i++^1] = value << 8;
   }
 
+  // One scanLine
   void fillLine(char *pixels)
   {
     int i = 0;
+    // HSync
     fillValues(i, levelSync, samplesSync);
+    // Back Porch
     fillValues(i, levelBlank, samplesBlank);
+    // Black left (image centering)
     fillValues(i, levelBlack, samplesBlackLeft);
+    // Picture Data
     for(int x = 0; x < targetXres / 2; x++)
     {
       short pix = (levelBlack + pixels[x]) << 8;
       line[i++^1] = pix;
-      line[i++^1]   = pix;
+      line[i++^1] = pix;
     }
+    // Black right (image centering)
     fillValues(i, levelBlack, samplesBlackRight);
+    // Front Porch
     fillValues(i, levelBlank, samplesBack);
   }
 
@@ -244,65 +263,82 @@ class CompositeOutput
   
   void sendFrameHalfResolution(char ***frame)
   {
-    //Even Halfframe    
+    //Even field
+    // 4 long
     int i = 0;
     fillLong(i); fillLong(i);
     sendLine(); sendLine();
     i = 0;
+    // 1 long, 1 short
     fillLong(i); fillShort(i);
     sendLine();
     i = 0;
+    // 4 short
     fillShort(i); fillShort(i);
     sendLine(); sendLine();
+
+    // Black lines for vertical centering
     fillBlank();
     for(int y = 0; y < linesEvenBlankTop; y++)
       sendLine();
+    // Lines (image)
     for(int y = 0; y < targetYresEven; y++)
     {
       char *pixels = (*frame)[y];
       fillLine(pixels);
       sendLine();
     }
+    // Black lines for vertical centering
     fillBlank();
     for(int y = 0; y < linesEvenBlankBottom; y++)
       sendLine();
+
+    // 4 short
     i = 0;
     fillShort(i); fillShort(i);
     sendLine(); sendLine();
+
+    // 1 short, 1 long 
+    //Odd field
     i = 0;
-    fillShort(i); 
-    //odd half frame
-    fillLong(i);
-    sendLine(); 
+    fillShort(i); fillLong(i);
+    sendLine();
+
+    // 4 long
     i = 0;
     fillLong(i); fillLong(i);
     sendLine(); sendLine();
+    // 4 short
     i = 0;
     fillShort(i); fillShort(i);
     sendLine(); sendLine();
+    // 1 short, half a line of blank
     i = 0;
     fillShort(i); fillValues(i, levelBlank, samplesLine / 2);
     sendLine();
 
+    // Black lines for vertical centering
     fillBlank();
     for(int y = 0; y < linesOddBlankTop; y++)
       sendLine();
+    // Lines (image)
     for(int y = 0; y < targetYresOdd; y++)
     {
       char *pixels = (*frame)[y];
       fillLine(pixels);
       sendLine();
     }
+    // Black lines for vertical centering
     fillBlank();
     for(int y = 0; y < linesOddBlankBottom; y++)
       sendLine();
+    // half a line of blank, 1 short
     i = 0;
     fillHalfBlank(); fillShort(i);
     sendLine(); 
+    // 4 short
     i = 0;
     fillShort(i); fillShort(i);
     sendLine(); sendLine();
   }
 };
-
-
