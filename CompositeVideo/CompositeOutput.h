@@ -4,10 +4,11 @@
 typedef struct
 {
   float lineMicros;
-  float syncMicros;
-  float blankEndMicros;
-  float backMicros;
-  float shortVSyncMicros;
+  float hsyncMicros;
+  float backPorchMicros;
+  float frontPorchMicros;
+  float shortSyncMicros;
+  float broadSyncMicros;
   float overscanLeftMicros; 
   float overscanRightMicros; 
   double syncVolts; 
@@ -32,10 +33,11 @@ const double IRE = 1.0 / 140.0;
 
 const TechProperties PALProperties = {
   .lineMicros = 64,
-  .syncMicros = 4.7,
-  .blankEndMicros = 10.4,
-  .backMicros = 1.65,
-  .shortVSyncMicros = 2.35,
+  .hsyncMicros = 4.7,
+  .backPorchMicros = 10.4,
+  .frontPorchMicros = 1.65,
+  .shortSyncMicros = 2.35,
+  .broadSyncMicros = (64 / 2) - 4.7,
   .overscanLeftMicros = 1.6875,
   .overscanRightMicros = 1.6875,
   .syncVolts = -0.3,
@@ -53,25 +55,27 @@ const TechProperties NTSCProperties = {
   // Duration of a line
   .lineMicros = 63.492,
   // HSync
-  .syncMicros = 4.7,
-  .blankEndMicros = 9.2,
+  .hsyncMicros = 4.7,
+  .backPorchMicros = 9.2,
   // Front porch
-  .backMicros = 1.5,
-  // Half HSync (Short sync pulse)
-  .shortVSyncMicros = 2.35,
-  .overscanLeftMicros = 0,//1.3, 
-  .overscanRightMicros = 0,//1,
+  .frontPorchMicros = 1.5,
+  // Short sync pulse
+  .shortSyncMicros = 2.35, // TO REMOVE
+  // Broad sync pulse
+  .broadSyncMicros = (63.492 / 2) - 4.7, // TO REMOVE
+  .overscanLeftMicros = 0,//1.3, // TO REMOVE
+  .overscanRightMicros = 0,//1, // TO REMOVE
   .syncVolts = -40.0 * IRE,
   .blankVolts = 0.0 * IRE,
   .blackVolts = 7.5 * IRE,
   .whiteVolts = 100.0 * IRE,
   .lines = 525,
-  .linesFirstTop = 20,
-  .linesOverscanTop = 6,
-  .linesOverscanBottom = 9,
+  .linesFirstTop = 20, // TO REMOVE
+  .linesOverscanTop = 6, // TO REMOVE
+  .linesOverscanBottom = 9, // TO REMOVE
   .imageAspect = 4./3.
 };
-  
+
 class CompositeOutput
 {
   public:
@@ -124,7 +128,9 @@ class CompositeOutput
   
   CompositeOutput(Mode mode, int xres, int yres, double Vcc = 3.3)
     :properties((mode==NTSC) ? NTSCProperties: PALProperties)
-  {    
+  {
+    // TO REMOVE - start
+
     int linesSyncTop = 5;
     int linesSyncBottom = 3;
 
@@ -140,28 +146,33 @@ class CompositeOutput
 
     targetYresOdd = (yres / 2 < linesOddVisible) ? yres / 2 : linesOddVisible;
     targetYresEven = (yres - targetYresOdd < linesEvenVisible) ? yres - targetYresOdd : linesEvenVisible;
+    // TO REMOVE
     targetYres = targetYresEven + targetYresOdd;
     
+    // TO REMOVE
     linesEvenBlankTop = properties.linesFirstTop - linesSyncTop + properties.linesOverscanTop + (linesEvenVisible - targetYresEven) / 2;
+    // TO REMOVE
     linesEvenBlankBottom = linesEven - linesEvenBlankTop - targetYresEven - linesSyncBottom;
+    // TO REMOVE
     linesOddBlankTop = linesEvenBlankTop;
+    // TO REMOVE
     linesOddBlankBottom = linesOdd - linesOddBlankTop - targetYresOdd - linesSyncBottom;
+    // TO REMOVE - ends
     
-    double samplesPerSecond = 160000000.0 / 3.0 / 2.0 / 2.0;
-    double samplesPerMicro = samplesPerSecond * 0.000001;
+    double samplesPerMicro = 160.0 / 3.0 / 2.0 / 2.0;
     samplesLine = (int)(samplesPerMicro * properties.lineMicros + 1.5) & ~1;
     // 4.7 µS HSync
-    samplesHSync = samplesPerMicro * properties.syncMicros + 0.5;
+    samplesHSync = samplesPerMicro * properties.hsyncMicros + 0.5;
     // Back Porch
-    samplesBackPorch = samplesPerMicro * (properties.blankEndMicros - properties.syncMicros + properties.overscanLeftMicros) + 0.5;
+    samplesBackPorch = samplesPerMicro * (properties.backPorchMicros - properties.hsyncMicros + properties.overscanLeftMicros) + 0.5;
     // Front Porch
-    samplesFrontPorch = samplesPerMicro * (properties.backMicros + properties.overscanRightMicros) + 0.5;
+    samplesFrontPorch = samplesPerMicro * (properties.frontPorchMicros + properties.overscanRightMicros) + 0.5;
     // Picture Data
     samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
 
     targetXres = xres < samplesActive ? xres : samplesActive;
 
-    samplesVSyncShort = samplesPerMicro * properties.shortVSyncMicros + 0.5;
+    samplesVSyncShort = samplesPerMicro * properties.shortSyncMicros + 0.5;
     samplesBlackLeft = (samplesActive - targetXres) / 2;
     samplesBlackRight = samplesActive - targetXres - samplesBlackLeft;
     double dacPerVolt = 255.0 / Vcc;
