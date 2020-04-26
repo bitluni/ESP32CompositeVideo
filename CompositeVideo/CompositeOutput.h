@@ -78,7 +78,7 @@ class CompositeOutput
   int samplesLine;
   int samplesHSync;
   int samplesBackPorch;
-  int samplesBack;
+  int samplesFrontPorch;
   int samplesActive;
   int samplesBlackLeft;
   int samplesBlackRight;
@@ -155,9 +155,9 @@ class CompositeOutput
     // Back Porch
     samplesBackPorch = samplesPerMicro * (properties.blankEndMicros - properties.syncMicros + properties.overscanLeftMicros) + 0.5;
     // Front Porch
-    samplesBack = samplesPerMicro * (properties.backMicros + properties.overscanRightMicros) + 0.5;
+    samplesFrontPorch = samplesPerMicro * (properties.backMicros + properties.overscanRightMicros) + 0.5;
     // Picture Data
-    samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesBack;
+    samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
 
     targetXres = xres < samplesActive ? xres : samplesActive;
 
@@ -238,7 +238,7 @@ class CompositeOutput
     // Black right (image centering)
     fillValues(i, levelBlack, samplesBlackRight);
     // Front Porch
-    fillValues(i, levelBlank, samplesBack);
+    fillValues(i, levelBlank, samplesFrontPorch);
   }
 
   void fillLong(int &i)
@@ -259,7 +259,7 @@ class CompositeOutput
     fillValues(i, levelSync, samplesHSync);
     fillValues(i, levelBlank, samplesBackPorch);
     fillValues(i, levelBlack, samplesActive);
-    fillValues(i, levelBlank, samplesBack);
+    fillValues(i, levelBlank, samplesFrontPorch);
   }
 
   void fillHalfBlank()
