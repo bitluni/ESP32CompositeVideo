@@ -94,23 +94,12 @@ class CompositeOutput
   char levelBlank;
   char levelBlack;
   char levelWhite;
-  char grayValues;
 
   int targetXres;
   int targetYres;
-  int targetYresEven;
-  int targetYresOdd;
 
-  int linesEven;
-  int linesOdd;
-  int linesEvenActive;
-  int linesOddActive;
-  int linesEvenVisible;
-  int linesOddVisible;
-  int linesEvenBlankTop;
-  int linesEvenBlankBottom;
-  int linesOddBlankTop;
-  int linesOddBlankBottom;
+  int linesBlackTop;
+  int linesBlackBottom;
 
   float pixelAspect;
     
@@ -129,40 +118,15 @@ class CompositeOutput
   CompositeOutput(Mode mode, int xres, int yres, double Vcc = 3.3)
     :properties((mode==NTSC) ? NTSCProperties: PALProperties)
   {
-    // TO REMOVE - start
 
-    int linesSyncTop = 5;
-    int linesSyncBottom = 3;
-
-    linesOdd = properties.lines / 2;
-    linesEven = properties.lines - linesOdd;
-    
-    linesEvenActive = linesEven - properties.linesFirstTop - linesSyncBottom;
-    
-    linesOddActive = linesOdd - properties.linesFirstTop - linesSyncBottom;
-    
-    linesEvenVisible = linesEvenActive - properties.linesOverscanTop - properties.linesOverscanBottom; 
-    linesOddVisible = linesOddActive - properties.linesOverscanTop - properties.linesOverscanBottom;
-
-    targetYresOdd = (yres / 2 < linesOddVisible) ? yres / 2 : linesOddVisible;
-    targetYresEven = (yres - targetYresOdd < linesEvenVisible) ? yres - targetYresOdd : linesEvenVisible;
-    // TO REMOVE
-    targetYres = targetYresEven + targetYresOdd;
-    
-    // TO REMOVE
-    linesEvenBlankTop = properties.linesFirstTop - linesSyncTop + properties.linesOverscanTop + (linesEvenVisible - targetYresEven) / 2;
-    // TO REMOVE
-    linesEvenBlankBottom = linesEven - linesEvenBlankTop - targetYresEven - linesSyncBottom;
-    // TO REMOVE
-    linesOddBlankTop = linesEvenBlankTop;
-    // TO REMOVE
-    linesOddBlankBottom = linesOdd - linesOddBlankTop - targetYresOdd - linesSyncBottom;
-    // TO REMOVE - ends
-    
     double samplesPerMicro = 160.0 / 3.0 / 2.0 / 2.0;
+    // Short Sync pulse
+    samplesShortSync = samplesPerMicro * properties.shortSyncMicros + 0.5;
+    // Broad Sync pulse
+    samplesBroadSync = samplesPerMicro * properties.broadSyncMicros + 0.5;
+    // Scanline
     samplesLine = (int)(samplesPerMicro * properties.lineMicros + 1.5) & ~1;
-    //samplesLine = samplesPerMicro * properties.lineMicros + 0.5;
-    // 4.7 µS HSync
+    // Horizontal Sync
     samplesHSync = samplesPerMicro * properties.hsyncMicros + 0.5;
     // Back Porch
     samplesBackPorch = samplesPerMicro * properties.backPorchMicros + 0.5;
@@ -171,11 +135,15 @@ class CompositeOutput
     // Picture Data
     samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
 
-    samplesShortSync = samplesPerMicro * properties.shortSyncMicros + 0.5;
-
-    samplesBroadSync = samplesPerMicro * properties.broadSyncMicros + 0.5;
-
     targetXres = xres < samplesActive ? xres : samplesActive;
+    targetYres = yres < properties.lines ? xres : properties.lines;
+
+    // Vertical centering
+    int blankLines = (properties.lines - yres) / 2;
+    linesBlackTop = blankLines / 2;
+    linesBlackBottom = blankLines - blankLines / 2;
+
+    // horizontal centering
     samplesBlackLeft = (samplesActive - targetXres) / 2;
     samplesBlackRight = samplesActive - targetXres - samplesBlackLeft;
 
@@ -184,9 +152,8 @@ class CompositeOutput
     levelBlank = (properties.blankVolts - properties.syncVolts) * dacPerVolt + 0.5;
     levelBlack = (properties.blackVolts - properties.syncVolts) * dacPerVolt + 0.5;
     levelWhite = (properties.whiteVolts - properties.syncVolts) * dacPerVolt + 0.5;
-    grayValues = levelWhite - levelBlack + 1;
 
-    pixelAspect = (float(samplesActive) / (linesEvenVisible + linesOddVisible)) / properties.imageAspect;
+    pixelAspect = (float(samplesActive) / targetYres) / properties.imageAspect;
   }
 
   void init()
@@ -270,6 +237,14 @@ class CompositeOutput
     fillValues(i, levelBlank, samplesLine / 2 - samplesShortSync);  
   }
   
+  // A full line of Blank
+  void fillBlankLine()
+  {
+    int i = 0;
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesLine - samplesHSync);
+  }
+
   // A full line of Black pixels
   void fillBlackLine()
   {
@@ -280,44 +255,68 @@ class CompositeOutput
     fillValues(i, levelBlank, samplesFrontPorch);
   }
 
-  void fillHalfBlank()
+  // A line of 50% Blank - 50% Black pixels
+  void fillHalfBlankHalfBlackLine()
   {
     int i = 0;
     fillValues(i, levelSync, samplesHSync);
-    fillValues(i, levelBlank, samplesLine / 2 - samplesHSync);  
+    fillValues(i, levelBlank, samplesBackPorch);
+    fillValues(i, levelBlank, samplesLine / 2 - (samplesHSync + samplesBackPorch));
+    fillValues(i, levelBlack, samplesLine / 2 - samplesFrontPorch);
+    fillValues(i, levelBlank, samplesFrontPorch);
+  }
+
+  void fillHalfBlack(int &i)
+  {
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesBackPorch);
+    fillValues(i, levelBlack, samplesLine / 2 - (samplesHSync + samplesBackPorch));  
   }
   
   void sendFrameHalfResolution(char ***frame)
   {
     //Even field
-    // 4 long
+    // 6 short
     int i = 0;
-    fillBroadSync(i); fillBroadSync(i);
-    sendLine(); sendLine();
-    i = 0;
-    // 1 long, 1 short
-    fillBroadSync(i); fillShortSync(i);
-    sendLine();
-    i = 0;
-    // 4 short
     fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine(); sendLine();
+    // 6 long
+    i = 0;
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine(); sendLine();
+    // 6 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine(); sendLine();
+
+    // 11 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
     sendLine(); sendLine();
 
     // Black lines for vertical centering
     fillBlackLine();
-    for(int y = 0; y < linesEvenBlankTop; y++)
+    for(int y = 0; y < linesBlackTop; y++)
       sendLine();
+
     // Lines (image)
-    for(int y = 0; y < targetYresEven; y++)
+    for(int y = 0; y < targetYres / 2; y++)
     {
       char *pixels = (*frame)[y];
       fillLine(pixels);
       sendLine();
     }
+
     // Black lines for vertical centering
     fillBlackLine();
-    for(int y = 0; y < linesEvenBlankBottom; y++)
+    for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
+
+    i = 0;
+    fillHalfBlack(i); fillShortSync(i);
+    sendLine();
 
     // 4 short
     i = 0;
@@ -334,34 +333,49 @@ class CompositeOutput
     i = 0;
     fillBroadSync(i); fillBroadSync(i);
     sendLine(); sendLine();
+
+    // 1 long, 1 short
+    i = 0;
+    fillBroadSync(i); fillShortSync(i);
+    sendLine();
+
     // 4 short
     i = 0;
     fillShortSync(i); fillShortSync(i);
     sendLine(); sendLine();
+    
     // 1 short, half a line of blank
     i = 0;
-    fillShortSync(i); fillValues(i, levelBlank, samplesLine / 2);
+    fillShortSync(i);
+    fillValues(i, levelBlank, samplesLine / 2); // Start of Odd field
     sendLine();
+
+    fillBlankLine();
+    for(int y = 0; y < 10; y++)
+      sendLine();
 
     // Black lines for vertical centering
     fillBlackLine();
-    for(int y = 0; y < linesOddBlankTop; y++)
+    for(int y = 0; y < linesBlackTop; y++)
       sendLine();
     // Lines (image)
-    for(int y = 0; y < targetYresOdd; y++)
+    for(int y = 0; y < targetYres / 2; y++)
     {
       char *pixels = (*frame)[y];
       fillLine(pixels);
       sendLine();
     }
+    
     // Black lines for vertical centering
     fillBlackLine();
-    for(int y = 0; y < linesOddBlankBottom; y++)
+    for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
-    // half a line of blank, 1 short
+    
+    // half a line of black, 1 short
     i = 0;
-    fillHalfBlank(); fillShortSync(i);
+    fillHalfBlack(i); fillShortSync(i);
     sendLine(); 
+    
     // 4 short
     i = 0;
     fillShortSync(i); fillShortSync(i);
