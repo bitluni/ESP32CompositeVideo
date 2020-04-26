@@ -56,7 +56,7 @@ const TechProperties NTSCProperties = {
   .lineMicros = 63.492,
   // HSync
   .hsyncMicros = 4.7,
-  .backPorchMicros = 9.2,
+  .backPorchMicros = 4.5,
   // Front porch
   .frontPorchMicros = 1.5,
   // Short sync pulse
@@ -87,8 +87,8 @@ class CompositeOutput
   int samplesBlackLeft;
   int samplesBlackRight;
 
-  int samplesVSyncShort;
-  int samplesVSyncLong;
+  int samplesShortSync;
+  int samplesBroadSync;
 
   char levelSync;
   char levelBlank;
@@ -161,20 +161,24 @@ class CompositeOutput
     
     double samplesPerMicro = 160.0 / 3.0 / 2.0 / 2.0;
     samplesLine = (int)(samplesPerMicro * properties.lineMicros + 1.5) & ~1;
+    //samplesLine = samplesPerMicro * properties.lineMicros + 0.5;
     // 4.7 µS HSync
     samplesHSync = samplesPerMicro * properties.hsyncMicros + 0.5;
     // Back Porch
-    samplesBackPorch = samplesPerMicro * (properties.backPorchMicros - properties.hsyncMicros + properties.overscanLeftMicros) + 0.5;
+    samplesBackPorch = samplesPerMicro * properties.backPorchMicros + 0.5;
     // Front Porch
-    samplesFrontPorch = samplesPerMicro * (properties.frontPorchMicros + properties.overscanRightMicros) + 0.5;
+    samplesFrontPorch = samplesPerMicro * properties.frontPorchMicros + 0.5;
     // Picture Data
     samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
 
-    targetXres = xres < samplesActive ? xres : samplesActive;
+    samplesShortSync = samplesPerMicro * properties.shortSyncMicros + 0.5;
 
-    samplesVSyncShort = samplesPerMicro * properties.shortSyncMicros + 0.5;
+    samplesBroadSync = samplesPerMicro * properties.broadSyncMicros + 0.5;
+
+    targetXres = xres < samplesActive ? xres : samplesActive;
     samplesBlackLeft = (samplesActive - targetXres) / 2;
     samplesBlackRight = samplesActive - targetXres - samplesBlackLeft;
+
     double dacPerVolt = 255.0 / Vcc;
     levelSync = 0;
     levelBlank = (properties.blankVolts - properties.syncVolts) * dacPerVolt + 0.5;
@@ -252,19 +256,22 @@ class CompositeOutput
     fillValues(i, levelBlank, samplesFrontPorch);
   }
 
-  void fillLong(int &i)
+  // Half a line of BroadSync
+  void fillBroadSync(int &i)
   {
-    fillValues(i, levelSync, samplesLine / 2 - samplesVSyncShort);
-    fillValues(i, levelBlank, samplesVSyncShort);
+    fillValues(i, levelSync, samplesBroadSync);
+    fillValues(i, levelBlank, samplesLine / 2 - samplesBroadSync);
   }
   
-  void fillShort(int &i)
+  // Half a line of ShortSync
+  void fillShortSync(int &i)
   {
-    fillValues(i, levelSync, samplesVSyncShort);
-    fillValues(i, levelBlank, samplesLine / 2 - samplesVSyncShort);  
+    fillValues(i, levelSync, samplesShortSync);
+    fillValues(i, levelBlank, samplesLine / 2 - samplesShortSync);  
   }
   
-  void fillBlank()
+  // A full line of Black pixels
+  void fillBlackLine()
   {
     int i = 0;
     fillValues(i, levelSync, samplesHSync);
@@ -285,19 +292,19 @@ class CompositeOutput
     //Even field
     // 4 long
     int i = 0;
-    fillLong(i); fillLong(i);
+    fillBroadSync(i); fillBroadSync(i);
     sendLine(); sendLine();
     i = 0;
     // 1 long, 1 short
-    fillLong(i); fillShort(i);
+    fillBroadSync(i); fillShortSync(i);
     sendLine();
     i = 0;
     // 4 short
-    fillShort(i); fillShort(i);
+    fillShortSync(i); fillShortSync(i);
     sendLine(); sendLine();
 
     // Black lines for vertical centering
-    fillBlank();
+    fillBlackLine();
     for(int y = 0; y < linesEvenBlankTop; y++)
       sendLine();
     // Lines (image)
@@ -308,36 +315,36 @@ class CompositeOutput
       sendLine();
     }
     // Black lines for vertical centering
-    fillBlank();
+    fillBlackLine();
     for(int y = 0; y < linesEvenBlankBottom; y++)
       sendLine();
 
     // 4 short
     i = 0;
-    fillShort(i); fillShort(i);
+    fillShortSync(i); fillShortSync(i);
     sendLine(); sendLine();
 
     // 1 short, 1 long 
     //Odd field
     i = 0;
-    fillShort(i); fillLong(i);
+    fillShortSync(i); fillBroadSync(i);
     sendLine();
 
     // 4 long
     i = 0;
-    fillLong(i); fillLong(i);
+    fillBroadSync(i); fillBroadSync(i);
     sendLine(); sendLine();
     // 4 short
     i = 0;
-    fillShort(i); fillShort(i);
+    fillShortSync(i); fillShortSync(i);
     sendLine(); sendLine();
     // 1 short, half a line of blank
     i = 0;
-    fillShort(i); fillValues(i, levelBlank, samplesLine / 2);
+    fillShortSync(i); fillValues(i, levelBlank, samplesLine / 2);
     sendLine();
 
     // Black lines for vertical centering
-    fillBlank();
+    fillBlackLine();
     for(int y = 0; y < linesOddBlankTop; y++)
       sendLine();
     // Lines (image)
@@ -348,16 +355,16 @@ class CompositeOutput
       sendLine();
     }
     // Black lines for vertical centering
-    fillBlank();
+    fillBlackLine();
     for(int y = 0; y < linesOddBlankBottom; y++)
       sendLine();
     // half a line of blank, 1 short
     i = 0;
-    fillHalfBlank(); fillShort(i);
+    fillHalfBlank(); fillShortSync(i);
     sendLine(); 
     // 4 short
     i = 0;
-    fillShort(i); fillShort(i);
+    fillShortSync(i); fillShortSync(i);
     sendLine(); sendLine();
   }
 };
