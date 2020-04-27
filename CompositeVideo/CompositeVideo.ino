@@ -3,8 +3,8 @@
 
 //#define SKULL
 //#define LOGO
-#define VENUS
-//#define DRAGON
+//#define VENUS
+#define DRAGON
 
 #include "Matrix.h"
 #include "CompositeGraphics.h"
@@ -22,8 +22,8 @@
 
 //PAL MAX, half: 324x268 full: 648x536
 //NTSC MAX, half: 324x224 full: 648x448
-const int XRES = 300;
-const int YRES = 200;
+const int XRES = 324;
+const int YRES = 224;
 
 //Graphics using the defined resolution for the backbuffer and fixed buffer for triangles
 CompositeGraphics graphics(XRES, YRES, 1337);

@@ -135,13 +135,15 @@ class CompositeOutput
     // Picture Data
     samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
 
+    int linesActive = (properties.lines - 20);
+
     targetXres = xres < samplesActive ? xres : samplesActive;
-    targetYres = yres < properties.lines ? xres : properties.lines;
+    targetYres = yres < linesActive ? yres : linesActive;
 
     // Vertical centering
-    int blankLines = (properties.lines - yres) / 2;
-    linesBlackTop = blankLines / 2;
-    linesBlackBottom = blankLines - blankLines / 2;
+    int blackLines = (linesActive - yres) / 2;
+    linesBlackTop = blackLines / 2;
+    linesBlackBottom = blackLines - linesBlackTop;
 
     // horizontal centering
     samplesBlackLeft = (samplesActive - targetXres) / 2;
@@ -260,8 +262,7 @@ class CompositeOutput
   {
     int i = 0;
     fillValues(i, levelSync, samplesHSync);
-    fillValues(i, levelBlank, samplesBackPorch);
-    fillValues(i, levelBlank, samplesLine / 2 - (samplesHSync + samplesBackPorch));
+    fillValues(i, levelBlank, samplesLine / 2 - samplesHSync);
     fillValues(i, levelBlack, samplesLine / 2 - samplesFrontPorch);
     fillValues(i, levelBlank, samplesFrontPorch);
   }
@@ -315,7 +316,10 @@ class CompositeOutput
       sendLine();
 
     i = 0;
-    fillHalfBlack(i); fillShortSync(i);
+    // Even field finish with a half line of black
+    fillHalfBlack(i);
+    // Odd field starts with 1 short
+    fillShortSync(i);
     sendLine();
 
     // 4 short
@@ -324,7 +328,6 @@ class CompositeOutput
     sendLine(); sendLine();
 
     // 1 short, 1 long 
-    //Odd field
     i = 0;
     fillShortSync(i); fillBroadSync(i);
     sendLine();
@@ -347,12 +350,19 @@ class CompositeOutput
     // 1 short, half a line of blank
     i = 0;
     fillShortSync(i);
-    fillValues(i, levelBlank, samplesLine / 2); // Start of Odd field
+    fillValues(i, levelBlank, samplesLine / 2);
     sendLine();
 
+    // 10 blank
     fillBlankLine();
-    for(int y = 0; y < 10; y++)
-      sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine();
+
+    // Half blank, Half black
+    fillHalfBlankHalfBlackLine();
+    sendLine();
 
     // Black lines for vertical centering
     fillBlackLine();
@@ -370,15 +380,5 @@ class CompositeOutput
     fillBlackLine();
     for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
-    
-    // half a line of black, 1 short
-    i = 0;
-    fillHalfBlack(i); fillShortSync(i);
-    sendLine(); 
-    
-    // 4 short
-    i = 0;
-    fillShortSync(i); fillShortSync(i);
-    sendLine(); sendLine();
   }
 };
