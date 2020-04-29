@@ -90,7 +90,7 @@ class CompositeOutput
   unsigned short *line;
 
   static const i2s_port_t I2S_PORT = (i2s_port_t)I2S_NUM_0;
-    
+
   enum Mode
   {
     PAL,
@@ -98,10 +98,13 @@ class CompositeOutput
   };
   
   const TechProperties &properties;
+
+  void (CompositeOutput::* sendFrame)(char***);
   
-  CompositeOutput(Mode mode, int xres, int yres, double Vcc = 3.3)
-    :properties((mode==NTSC) ? NTSCProperties: PALProperties)
+  CompositeOutput(Mode mode, int xres, int yres, double Vcc = 3.3) : properties((mode==NTSC) ? NTSCProperties : PALProperties)
   {
+
+    this->sendFrame = mode==NTSC ? &CompositeOutput::sendNTSCFrame : &CompositeOutput::sendPALFrame;
 
     double samplesPerMicro = 160.0 / 3.0 / 2.0 / 2.0;
     // Short Sync pulse
@@ -257,8 +260,120 @@ class CompositeOutput
     fillValues(i, levelBlank, samplesBackPorch);
     fillValues(i, levelBlack, samplesLine / 2 - (samplesHSync + samplesBackPorch));  
   }
+
+  void sendFrameHalfResolution(char ***frame) {
+    (this->* this->sendFrame) (frame);
+  }
   
-  void sendFrameHalfResolution(char ***frame)
+  void sendNTSCFrame(char ***frame)
+  {
+    //Even field
+    // 6 short
+    int i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine(); sendLine();
+    // 6 long
+    i = 0;
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine(); sendLine();
+    // 6 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine(); sendLine();
+
+    // 11 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine();
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackTop; y++)
+      sendLine();
+
+    // Lines (image)
+    for(int y = 0; y < targetYres / 2; y++)
+    {
+      char *pixels = (*frame)[y];
+      fillLine(pixels);
+      sendLine();
+    }
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackBottom; y++)
+      sendLine();
+
+    i = 0;
+    // Even field finish with a half line of black
+    fillHalfBlack(i);
+    // Odd field starts with 1 short
+    fillShortSync(i);
+    sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+
+    // 1 short, 1 long 
+    i = 0;
+    fillShortSync(i); fillBroadSync(i);
+    sendLine();
+
+    // 4 long
+    i = 0;
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine();
+
+    // 1 long, 1 short
+    i = 0;
+    fillBroadSync(i); fillShortSync(i);
+    sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+    
+    // 1 short, half a line of blank
+    i = 0;
+    fillShortSync(i);
+    fillValues(i, levelBlank, samplesLine / 2);
+    sendLine();
+
+    // 10 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine();
+
+    // Half blank, Half black
+    fillHalfBlankHalfBlackLine();
+    sendLine();
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackTop; y++)
+      sendLine();
+    // Lines (image)
+    for(int y = 0; y < targetYres / 2; y++)
+    {
+      char *pixels = (*frame)[y];
+      fillLine(pixels);
+      sendLine();
+    }
+    
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackBottom; y++)
+      sendLine();
+  }
+  
+  void sendPALFrame(char ***frame)
   {
     //Even field
     // 6 short
