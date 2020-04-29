@@ -14,6 +14,7 @@ typedef struct
   double blackVolts;
   double whiteVolts;
   short lines;
+  short verticalBlankingLines;
 } TechProperties;
 
 // Levels: see https://www.maximintegrated.com/en/design/technical-documents/tutorials/7/734.html
@@ -27,19 +28,23 @@ const float IRE = 1.0 / 140.0;
 
 const float imageAspect = 4./3.;
 
-// See http://martin.hinner.info/vga/pal.html
+// See http://www.batsocks.co.uk/readme/video_timing.htm
 const TechProperties PALProperties = {
+  // Durations
   .lineMicros = 64,
   .hsyncMicros = 4.7,
-  .backPorchMicros = 10.4,
+  .backPorchMicros = 5.7,
   .frontPorchMicros = 1.65,
   .shortSyncMicros = 2.35,
   .broadSyncMicros = (64 / 2) - 4.7,
-  .syncVolts = -0.3,
-  .blankVolts = 0.0, 
-  .blackVolts =  0.005,//specs 0.0,
-  .whiteVolts = 0.7,
+  // Levels
+  .syncVolts = -40.0 * IRE,
+  .blankVolts = 0.0 * IRE,
+  .blackVolts = 7.5 * IRE,
+  .whiteVolts = 100.0 * IRE,
+  // Line count
   .lines = 625,
+  .verticalBlankingLines = 51,
 };
 
 // See https://www.technicalaudio.com/pdf/Grass_Valley/Grass_Valley_NTSC_Studio_Timing.pdf
@@ -58,6 +63,7 @@ const TechProperties NTSCProperties = {
   .whiteVolts = 100.0 * IRE,
   // Line count
   .lines = 525,
+  .verticalBlankingLines = 41,
 };
 
 class CompositeOutput
@@ -122,7 +128,7 @@ class CompositeOutput
     // Picture Data
     samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
 
-    int linesActive = (properties.lines - 20);
+    int linesActive = (properties.lines - properties.verticalBlankingLines);
 
     targetXres = xres < samplesActive ? xres : samplesActive;
     targetYres = yres < linesActive ? yres : linesActive;
@@ -376,25 +382,31 @@ class CompositeOutput
   void sendPALFrame(char ***frame)
   {
     //Even field
-    // 6 short
+    // 4 long
     int i = 0;
-    fillShortSync(i); fillShortSync(i);
-    sendLine(); sendLine(); sendLine();
-    // 6 long
-    i = 0;
     fillBroadSync(i); fillBroadSync(i);
-    sendLine(); sendLine(); sendLine();
-    // 6 short
+    sendLine(); sendLine();
+    // 1 long + 1 short
+    i = 0;
+    fillBroadSync(i); fillShortSync(i);
+    sendLine();
+    // 4 short
     i = 0;
     fillShortSync(i); fillShortSync(i);
-    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine();
 
-    // 11 blank
+    // 17 blank
     fillBlankLine();
     sendLine(); sendLine(); sendLine();
     sendLine(); sendLine(); sendLine();
     sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
     sendLine(); sendLine();
+
+    // Half blank, Half black
+    fillHalfBlankHalfBlackLine();
+    sendLine();
 
     // Black lines for vertical centering
     fillBlackLine();
@@ -414,13 +426,6 @@ class CompositeOutput
     for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
 
-    i = 0;
-    // Even field finish with a half line of black
-    fillHalfBlack(i);
-    // Odd field starts with 1 short
-    fillShortSync(i);
-    sendLine();
-
     // 4 short
     i = 0;
     fillShortSync(i); fillShortSync(i);
@@ -428,18 +433,15 @@ class CompositeOutput
 
     // 1 short, 1 long 
     i = 0;
-    fillShortSync(i); fillBroadSync(i);
+    fillShortSync(i);
+    // Odd field starts with 1 short
+    fillBroadSync(i);
     sendLine();
 
     // 4 long
     i = 0;
     fillBroadSync(i); fillBroadSync(i);
     sendLine(); sendLine();
-
-    // 1 long, 1 short
-    i = 0;
-    fillBroadSync(i); fillShortSync(i);
-    sendLine();
 
     // 4 short
     i = 0;
@@ -452,16 +454,14 @@ class CompositeOutput
     fillValues(i, levelBlank, samplesLine / 2);
     sendLine();
 
-    // 10 blank
+    // 17 blank
     fillBlankLine();
     sendLine(); sendLine(); sendLine();
     sendLine(); sendLine(); sendLine();
     sendLine(); sendLine(); sendLine();
-    sendLine();
-
-    // Half blank, Half black
-    fillHalfBlankHalfBlackLine();
-    sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine();
 
     // Black lines for vertical centering
     fillBlackLine();
@@ -479,5 +479,15 @@ class CompositeOutput
     fillBlackLine();
     for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
+
+    // Half black, Half short
+    i = 0;
+    fillHalfBlack(i); fillShortSync(i);
+    sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
   }
 };
