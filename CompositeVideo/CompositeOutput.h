@@ -9,28 +9,25 @@ typedef struct
   float frontPorchMicros;
   float shortSyncMicros;
   float broadSyncMicros;
-  float overscanLeftMicros; 
-  float overscanRightMicros; 
   double syncVolts; 
   double blankVolts; 
   double blackVolts;
   double whiteVolts;
   short lines;
-  short linesFirstTop;
-  short linesOverscanTop;
-  short linesOverscanBottom;
-  float imageAspect;
-}TechProperties;
+} TechProperties;
 
 // Levels: see https://www.maximintegrated.com/en/design/technical-documents/tutorials/7/734.html
 // Used for sync, blank, black, white levels.
 // 1Vp-p = 140*IRE
-const double IRE = 1.0 / 140.0;
+const float IRE = 1.0 / 140.0;
 
 // Timings: http://www.batsocks.co.uk/readme/video_timing.htm
 // http://martin.hinner.info/vga/pal.html
 // Also interesting: https://wiki.nesdev.com/w/index.php/NTSC_video
 
+const float imageAspect = 4./3.;
+
+// See http://martin.hinner.info/vga/pal.html
 const TechProperties PALProperties = {
   .lineMicros = 64,
   .hsyncMicros = 4.7,
@@ -38,42 +35,29 @@ const TechProperties PALProperties = {
   .frontPorchMicros = 1.65,
   .shortSyncMicros = 2.35,
   .broadSyncMicros = (64 / 2) - 4.7,
-  .overscanLeftMicros = 1.6875,
-  .overscanRightMicros = 1.6875,
   .syncVolts = -0.3,
   .blankVolts = 0.0, 
   .blackVolts =  0.005,//specs 0.0,
   .whiteVolts = 0.7,
   .lines = 625,
-  .linesFirstTop = 23,
-  .linesOverscanTop = 9,
-  .linesOverscanBottom = 9,
-  .imageAspect = 4./3.
 };
 
+// See https://www.technicalaudio.com/pdf/Grass_Valley/Grass_Valley_NTSC_Studio_Timing.pdf
 const TechProperties NTSCProperties = {
-  // Duration of a line
-  .lineMicros = 63.492,
-  // HSync
+  // Durations
+  .lineMicros = 63.556,
   .hsyncMicros = 4.7,
   .backPorchMicros = 4.5,
-  // Front porch
   .frontPorchMicros = 1.5,
-  // Short sync pulse
-  .shortSyncMicros = 2.35, // TO REMOVE
-  // Broad sync pulse
-  .broadSyncMicros = (63.492 / 2) - 4.7, // TO REMOVE
-  .overscanLeftMicros = 0,//1.3, // TO REMOVE
-  .overscanRightMicros = 0,//1, // TO REMOVE
+  .shortSyncMicros = 2.35,
+  .broadSyncMicros = (63.556 / 2) - 4.7,
+  // Levels
   .syncVolts = -40.0 * IRE,
   .blankVolts = 0.0 * IRE,
   .blackVolts = 7.5 * IRE,
   .whiteVolts = 100.0 * IRE,
+  // Line count
   .lines = 525,
-  .linesFirstTop = 20, // TO REMOVE
-  .linesOverscanTop = 6, // TO REMOVE
-  .linesOverscanBottom = 9, // TO REMOVE
-  .imageAspect = 4./3.
 };
 
 class CompositeOutput
@@ -155,7 +139,7 @@ class CompositeOutput
     levelBlack = (properties.blackVolts - properties.syncVolts) * dacPerVolt + 0.5;
     levelWhite = (properties.whiteVolts - properties.syncVolts) * dacPerVolt + 0.5;
 
-    pixelAspect = (float(samplesActive) / targetYres) / properties.imageAspect;
+    pixelAspect = (float(samplesActive) / targetYres) / imageAspect;
   }
 
   void init()
