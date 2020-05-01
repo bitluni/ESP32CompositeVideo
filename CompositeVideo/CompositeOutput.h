@@ -4,15 +4,15 @@
 typedef struct
 {
   float lineMicros;
-  float hsyncMicros;
+  float hSyncMicros;
   float backPorchMicros;
   float frontPorchMicros;
   float shortSyncMicros;
   float broadSyncMicros;
-  double syncVolts; 
-  double blankVolts; 
-  double blackVolts;
-  double whiteVolts;
+  float syncVolts; 
+  float blankVolts; 
+  float blackVolts;
+  float whiteVolts;
   short lines;
   short verticalBlankingLines;
 } TechProperties;
@@ -32,7 +32,7 @@ const float imageAspect = 4./3.;
 const TechProperties PALProperties = {
   // Durations
   .lineMicros = 64,
-  .hsyncMicros = 4.7,
+  .hSyncMicros = 4.7,
   .backPorchMicros = 5.7,
   .frontPorchMicros = 1.65,
   .shortSyncMicros = 2.35,
@@ -51,7 +51,7 @@ const TechProperties PALProperties = {
 const TechProperties NTSCProperties = {
   // Durations
   .lineMicros = 63.556,
-  .hsyncMicros = 4.7,
+  .hSyncMicros = 4.7,
   .backPorchMicros = 4.5,
   .frontPorchMicros = 1.5,
   .shortSyncMicros = 2.35,
@@ -120,7 +120,7 @@ class CompositeOutput
     // Scanline
     samplesLine = (int)(samplesPerMicro * properties.lineMicros + 1.5) & ~1;
     // Horizontal Sync
-    samplesHSync = samplesPerMicro * properties.hsyncMicros + 0.5;
+    samplesHSync = samplesPerMicro * properties.hSyncMicros + 0.5;
     // Back Porch
     samplesBackPorch = samplesPerMicro * properties.backPorchMicros + 0.5;
     // Front Porch

@@ -4,103 +4,99 @@
 typedef struct
 {
   float lineMicros;
-  float syncMicros;
-  float blankEndMicros;
-  float backMicros;
-  float shortVSyncMicros;
-  float overscanLeftMicros; 
-  float overscanRightMicros; 
+  float hSyncMicros;
+  float backPorchMicros;
+  float frontPorchMicros;
+  float shortSyncMicros;
+  float broadSyncMicros;
   float syncVolts; 
   float blankVolts; 
   float blackVolts;
   float whiteVolts;
   short lines;
-  short linesFirstTop;
-  short linesOverscanTop;
-  short linesOverscanBottom;
-  float imageAspect;
-}TechProperties;
+  short verticalBlankingLines;
+} TechProperties;
 
+// Levels: see https://www.maximintegrated.com/en/design/technical-documents/tutorials/7/734.html
+// Used for sync, blank, black, white levels.
+// 1Vp-p = 140*IRE
+const float IRE = 1.0 / 140.0;
+
+// Timings: http://www.batsocks.co.uk/readme/video_timing.htm
+// http://martin.hinner.info/vga/pal.html
+// Also interesting: https://wiki.nesdev.com/w/index.php/NTSC_video
+
+const float imageAspect = 4./3.;
+
+// See http://www.batsocks.co.uk/readme/video_timing.htm
 const TechProperties PALProperties = {
+  // Durations
   .lineMicros = 64,
-  .syncMicros = 4.7,
-  .blankEndMicros = 10.4,
-  .backMicros = 1.65,
-  .shortVSyncMicros = 2.35,
-  .overscanLeftMicros = 1.6875,
-  .overscanRightMicros = 1.6875,
-  .syncVolts = -0.3,
-  .blankVolts = 0.0, 
-  .blackVolts =  0.005,//specs 0.0,
-  .whiteVolts = 0.7,
+  .hSyncMicros = 4.7,
+  .backPorchMicros = 5.7,
+  .frontPorchMicros = 1.65,
+  .shortSyncMicros = 2.35,
+  .broadSyncMicros = (64 / 2) - 4.7,
+  // Levels
+  .syncVolts = -40.0 * IRE,
+  .blankVolts = 0.0 * IRE,
+  .blackVolts = 7.5 * IRE,
+  .whiteVolts = 100.0 * IRE,
+  // Line count
   .lines = 625,
-  .linesFirstTop = 23,
-  .linesOverscanTop = 9,
-  .linesOverscanBottom = 9,
-  .imageAspect = 4./3.
+  .verticalBlankingLines = 51,
 };
 
+// See https://www.technicalaudio.com/pdf/Grass_Valley/Grass_Valley_NTSC_Studio_Timing.pdf
 const TechProperties NTSCProperties = {
-  .lineMicros = 63.492,
-  .syncMicros = 4.7,
-  .blankEndMicros = 9.2,
-  .backMicros = 1.5,
-  .shortVSyncMicros = 2.3,   
-  .overscanLeftMicros = 0,//1.3, 
-  .overscanRightMicros = 0,//1, 
-  .syncVolts = -0.286,
-  .blankVolts = 0.0, 
-  .blackVolts = 0.05, //specs 0.054,
-  .whiteVolts = 0.714,  
+  // Durations
+  .lineMicros = 63.556,
+  .hSyncMicros = 4.7,
+  .backPorchMicros = 4.5,
+  .frontPorchMicros = 1.5,
+  .shortSyncMicros = 2.35,
+  .broadSyncMicros = (63.556 / 2) - 4.7,
+  // Levels
+  .syncVolts = -40.0 * IRE,
+  .blankVolts = 0.0 * IRE,
+  .blackVolts = 7.5 * IRE,
+  .whiteVolts = 100.0 * IRE,
+  // Line count
   .lines = 525,
-  .linesFirstTop = 20,
-  .linesOverscanTop = 6,
-  .linesOverscanBottom = 9,
-  .imageAspect = 4./3.
+  .verticalBlankingLines = 41,
 };
-  
+
 class CompositeOutput
 {
   public:
   int samplesLine;
-  int samplesSync;
-  int samplesBlank;
-  int samplesBack;
+  int samplesHSync;
+  int samplesBackPorch;
+  int samplesFrontPorch;
   int samplesActive;
   int samplesBlackLeft;
   int samplesBlackRight;
 
-  int samplesVSyncShort;
-  int samplesVSyncLong;
+  int samplesShortSync;
+  int samplesBroadSync;
 
   char levelSync;
   char levelBlank;
   char levelBlack;
   char levelWhite;
-  char grayValues;
 
   int targetXres;
   int targetYres;
-  int targetYresEven;
-  int targetYresOdd;
 
-  int linesEven;
-  int linesOdd;
-  int linesEvenActive;
-  int linesOddActive;
-  int linesEvenVisible;
-  int linesOddVisible;
-  int linesEvenBlankTop;
-  int linesEvenBlankBottom;
-  int linesOddBlankTop;
-  int linesOddBlankBottom;
+  int linesBlackTop;
+  int linesBlackBottom;
 
   float pixelAspect;
     
   unsigned short *line;
 
   static const i2s_port_t I2S_PORT = (i2s_port_t)I2S_NUM_0;
-    
+
   enum Mode
   {
     PAL,
@@ -108,50 +104,51 @@ class CompositeOutput
   };
   
   const TechProperties &properties;
+
+  void (CompositeOutput::* sendFrame)(char***);
   
-  CompositeOutput(Mode mode, int xres, int yres, double Vcc = 3.3)
-    :properties((mode==NTSC) ? NTSCProperties: PALProperties)
-  {    
-    int linesSyncTop = 5;
-    int linesSyncBottom = 3;
+  CompositeOutput(Mode mode, int xres, int yres, double Vcc = 3.3) : properties((mode==NTSC) ? NTSCProperties : PALProperties)
+  {
 
-    linesOdd = properties.lines / 2;
-    linesEven = properties.lines - linesOdd;
-    linesEvenActive = linesEven - properties.linesFirstTop - linesSyncBottom;
-    linesOddActive = linesOdd - properties.linesFirstTop - linesSyncBottom;
-    linesEvenVisible = linesEvenActive - properties.linesOverscanTop - properties.linesOverscanBottom; 
-    linesOddVisible = linesOddActive - properties.linesOverscanTop - properties.linesOverscanBottom;
+    this->sendFrame = mode==NTSC ? &CompositeOutput::sendNTSCFrame : &CompositeOutput::sendPALFrame;
 
-    targetYresOdd = (yres / 2 < linesOddVisible) ? yres / 2 : linesOddVisible;
-    targetYresEven = (yres - targetYresOdd < linesEvenVisible) ? yres - targetYresOdd : linesEvenVisible;
-    targetYres = targetYresEven + targetYresOdd;
-    
-    linesEvenBlankTop = properties.linesFirstTop - linesSyncTop + properties.linesOverscanTop + (linesEvenVisible - targetYresEven) / 2;
-    linesEvenBlankBottom = linesEven - linesEvenBlankTop - targetYresEven - linesSyncBottom;
-    linesOddBlankTop = linesEvenBlankTop;
-    linesOddBlankBottom = linesOdd - linesOddBlankTop - targetYresOdd - linesSyncBottom;
-    
-    double samplesPerSecond = 160000000.0 / 3.0 / 2.0 / 2.0;
-    double samplesPerMicro = samplesPerSecond * 0.000001;
+    double samplesPerMicro = 160.0 / 3.0 / 2.0 / 2.0;
+    // Short Sync pulse
+    samplesShortSync = samplesPerMicro * properties.shortSyncMicros + 0.5;
+    // Broad Sync pulse
+    samplesBroadSync = samplesPerMicro * properties.broadSyncMicros + 0.5;
+    // Scanline
     samplesLine = (int)(samplesPerMicro * properties.lineMicros + 1.5) & ~1;
-    samplesSync = samplesPerMicro * properties.syncMicros + 0.5;
-    samplesBlank = samplesPerMicro * (properties.blankEndMicros - properties.syncMicros + properties.overscanLeftMicros) + 0.5;
-    samplesBack = samplesPerMicro * (properties.backMicros + properties.overscanRightMicros) + 0.5;
-    samplesActive = samplesLine - samplesSync - samplesBlank - samplesBack;
+    // Horizontal Sync
+    samplesHSync = samplesPerMicro * properties.hSyncMicros + 0.5;
+    // Back Porch
+    samplesBackPorch = samplesPerMicro * properties.backPorchMicros + 0.5;
+    // Front Porch
+    samplesFrontPorch = samplesPerMicro * properties.frontPorchMicros + 0.5;
+    // Picture Data
+    samplesActive = samplesLine - samplesHSync - samplesBackPorch - samplesFrontPorch;
+
+    int linesActive = (properties.lines - properties.verticalBlankingLines);
 
     targetXres = xres < samplesActive ? xres : samplesActive;
+    targetYres = yres < linesActive ? yres : linesActive;
 
-    samplesVSyncShort = samplesPerMicro * properties.shortVSyncMicros + 0.5;
+    // Vertical centering
+    int blackLines = (linesActive - yres) / 2;
+    linesBlackTop = blackLines / 2;
+    linesBlackBottom = blackLines - linesBlackTop;
+
+    // horizontal centering
     samplesBlackLeft = (samplesActive - targetXres) / 2;
     samplesBlackRight = samplesActive - targetXres - samplesBlackLeft;
+
     double dacPerVolt = 255.0 / Vcc;
     levelSync = 0;
     levelBlank = (properties.blankVolts - properties.syncVolts) * dacPerVolt + 0.5;
     levelBlack = (properties.blackVolts - properties.syncVolts) * dacPerVolt + 0.5;
     levelWhite = (properties.whiteVolts - properties.syncVolts) * dacPerVolt + 0.5;
-    grayValues = levelWhite - levelBlack + 1;
 
-    pixelAspect = (float(samplesActive) / (linesEvenVisible + linesOddVisible)) / properties.imageAspect;
+    pixelAspect = (float(samplesActive) / targetYres) / imageAspect;
   }
 
   void init()
@@ -172,11 +169,11 @@ class CompositeOutput
     i2s_set_pin(I2S_PORT, NULL);                           //use internal DAC
     i2s_set_sample_rates(I2S_PORT, 1000000);               //dummy sample rate, since the function fails at high values
   
-    //this is the hack that enables the highest sampling rate possible ~13MHz, have fun
-    SET_PERI_REG_BITS(I2S_CLKM_CONF_REG(0), I2S_CLKM_DIV_A_V, 1, I2S_CLKM_DIV_A_S);
-    SET_PERI_REG_BITS(I2S_CLKM_CONF_REG(0), I2S_CLKM_DIV_B_V, 1, I2S_CLKM_DIV_B_S);
-    SET_PERI_REG_BITS(I2S_CLKM_CONF_REG(0), I2S_CLKM_DIV_NUM_V, 2, I2S_CLKM_DIV_NUM_S); 
-    SET_PERI_REG_BITS(I2S_SAMPLE_RATE_CONF_REG(0), I2S_TX_BCK_DIV_NUM_V, 2, I2S_TX_BCK_DIV_NUM_S);
+    //this is the hack that enables the highest sampling rate possible 13.333MHz, have fun
+    SET_PERI_REG_BITS(I2S_CLKM_CONF_REG(I2S_PORT), I2S_CLKM_DIV_A_V, 1, I2S_CLKM_DIV_A_S);
+    SET_PERI_REG_BITS(I2S_CLKM_CONF_REG(I2S_PORT), I2S_CLKM_DIV_B_V, 1, I2S_CLKM_DIV_B_S);
+    SET_PERI_REG_BITS(I2S_CLKM_CONF_REG(I2S_PORT), I2S_CLKM_DIV_NUM_V, 2, I2S_CLKM_DIV_NUM_S); 
+    SET_PERI_REG_BITS(I2S_SAMPLE_RATE_CONF_REG(I2S_PORT), I2S_TX_BCK_DIV_NUM_V, 2, I2S_TX_BCK_DIV_NUM_S);
   }
 
   void sendLine()
@@ -198,108 +195,299 @@ class CompositeOutput
       line[i++^1] = value << 8;
   }
 
+  // One scanLine
   void fillLine(char *pixels)
   {
     int i = 0;
-    fillValues(i, levelSync, samplesSync);
-    fillValues(i, levelBlank, samplesBlank);
+    // HSync
+    fillValues(i, levelSync, samplesHSync);
+    // Back Porch
+    fillValues(i, levelBlank, samplesBackPorch);
+    // Black left (image centering)
     fillValues(i, levelBlack, samplesBlackLeft);
+    // Picture Data
     for(int x = 0; x < targetXres / 2; x++)
     {
       short pix = (levelBlack + pixels[x]) << 8;
       line[i++^1] = pix;
-      line[i++^1]   = pix;
+      line[i++^1] = pix;
     }
+    // Black right (image centering)
     fillValues(i, levelBlack, samplesBlackRight);
-    fillValues(i, levelBlank, samplesBack);
+    // Front Porch
+    fillValues(i, levelBlank, samplesFrontPorch);
   }
 
-  void fillLong(int &i)
+  // Half a line of BroadSync
+  void fillBroadSync(int &i)
   {
-    fillValues(i, levelSync, samplesLine / 2 - samplesVSyncShort);
-    fillValues(i, levelBlank, samplesVSyncShort);
+    fillValues(i, levelSync, samplesBroadSync);
+    fillValues(i, levelBlank, samplesLine / 2 - samplesBroadSync);
   }
   
-  void fillShort(int &i)
+  // Half a line of ShortSync
+  void fillShortSync(int &i)
   {
-    fillValues(i, levelSync, samplesVSyncShort);
-    fillValues(i, levelBlank, samplesLine / 2 - samplesVSyncShort);  
+    fillValues(i, levelSync, samplesShortSync);
+    fillValues(i, levelBlank, samplesLine / 2 - samplesShortSync);  
   }
   
-  void fillBlank()
+  // A full line of Blank
+  void fillBlankLine()
   {
     int i = 0;
-    fillValues(i, levelSync, samplesSync);
-    fillValues(i, levelBlank, samplesBlank);
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesLine - samplesHSync);
+  }
+
+  // A full line of Black pixels
+  void fillBlackLine()
+  {
+    int i = 0;
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesBackPorch);
     fillValues(i, levelBlack, samplesActive);
-    fillValues(i, levelBlank, samplesBack);
+    fillValues(i, levelBlank, samplesFrontPorch);
   }
 
-  void fillHalfBlank(int &i)
+  // A line of 50% Blank - 50% Black pixels
+  void fillHalfBlankHalfBlackLine()
   {
-    fillValues(i, levelSync, samplesSync);
-    fillValues(i, levelBlank, samplesLine / 2 - samplesSync);  
+    int i = 0;
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesLine / 2 - samplesHSync);
+    fillValues(i, levelBlack, samplesLine / 2 - samplesFrontPorch);
+    fillValues(i, levelBlank, samplesFrontPorch);
+  }
+
+  void fillHalfBlack(int &i)
+  {
+    fillValues(i, levelSync, samplesHSync);
+    fillValues(i, levelBlank, samplesBackPorch);
+    fillValues(i, levelBlack, samplesLine / 2 - (samplesHSync + samplesBackPorch));  
+  }
+
+  void sendFrameHalfResolution(char ***frame) {
+    (this->* this->sendFrame) (frame);
   }
   
-  void sendFrameHalfResolution(char ***frame)
+  void sendNTSCFrame(char ***frame)
   {
-    //Even Halfframe    
+    //Even field
+    // 6 short
     int i = 0;
-    fillLong(i); fillLong(i);
-    sendLine(); sendLine();
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine(); sendLine();
+    // 6 long
     i = 0;
-    fillLong(i); fillShort(i);
-    sendLine();
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine(); sendLine();
+    // 6 short
     i = 0;
-    fillShort(i); fillShort(i);
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine(); sendLine();
+
+    // 11 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
     sendLine(); sendLine();
-    fillBlank();
-    for(int y = 0; y < linesEvenBlankTop; y++)
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackTop; y++)
       sendLine();
-    for(int y = 0; y < targetYresEven; y++)
+
+    // Lines (image)
+    for(int y = 0; y < targetYres / 2; y++)
     {
       char *pixels = (*frame)[y];
       fillLine(pixels);
       sendLine();
     }
-    fillBlank();
-    for(int y = 0; y < linesEvenBlankBottom; y++)
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
+
     i = 0;
-    fillShort(i); fillShort(i);
-    sendLine(); sendLine();
-    i = 0;
-    fillShort(i); 
-    //odd half frame
-    fillLong(i);
-    sendLine(); 
-    i = 0;
-    fillLong(i); fillLong(i);
-    sendLine(); sendLine();
-    i = 0;
-    fillShort(i); fillShort(i);
-    sendLine(); sendLine();
-    i = 0;
-    fillShort(i); fillValues(i, levelBlank, samplesLine / 2);
+    // Even field finish with a half line of black
+    fillHalfBlack(i);
+    // Odd field starts with 1 short
+    fillShortSync(i);
     sendLine();
 
-    fillBlank();
-    for(int y = 0; y < linesOddBlankTop; y++)
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+
+    // 1 short, 1 long 
+    i = 0;
+    fillShortSync(i); fillBroadSync(i);
+    sendLine();
+
+    // 4 long
+    i = 0;
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine();
+
+    // 1 long, 1 short
+    i = 0;
+    fillBroadSync(i); fillShortSync(i);
+    sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+    
+    // 1 short, half a line of blank
+    i = 0;
+    fillShortSync(i);
+    fillValues(i, levelBlank, samplesLine / 2);
+    sendLine();
+
+    // 10 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine();
+
+    // Half blank, Half black
+    fillHalfBlankHalfBlackLine();
+    sendLine();
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackTop; y++)
       sendLine();
-    for(int y = 0; y < targetYresOdd; y++)
+    // Lines (image)
+    for(int y = 0; y < targetYres / 2; y++)
     {
       char *pixels = (*frame)[y];
       fillLine(pixels);
       sendLine();
     }
-    fillBlank();
-    for(int y = 0; y < linesOddBlankBottom; y++)
+    
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackBottom; y++)
       sendLine();
+  }
+  
+  void sendPALFrame(char ***frame)
+  {
+    //Even field
+    // 4 long
+    int i = 0;
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine();
+    // 1 long + 1 short
     i = 0;
-    fillHalfBlank(i); fillShort(i);
-    sendLine(); 
+    fillBroadSync(i); fillShortSync(i);
+    sendLine();
+    // 4 short
     i = 0;
-    fillShort(i); fillShort(i);
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+
+    // 17 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine();
+
+    // Half blank, Half black
+    fillHalfBlankHalfBlackLine();
+    sendLine();
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackTop; y++)
+      sendLine();
+
+    // Lines (image)
+    for(int y = 0; y < targetYres / 2; y++)
+    {
+      char *pixels = (*frame)[y];
+      fillLine(pixels);
+      sendLine();
+    }
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackBottom; y++)
+      sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+
+    // 1 short, 1 long 
+    i = 0;
+    fillShortSync(i);
+    // Odd field starts with 1 short
+    fillBroadSync(i);
+    sendLine();
+
+    // 4 long
+    i = 0;
+    fillBroadSync(i); fillBroadSync(i);
+    sendLine(); sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
+    sendLine(); sendLine();
+    
+    // 1 short, half a line of blank
+    i = 0;
+    fillShortSync(i);
+    fillValues(i, levelBlank, samplesLine / 2);
+    sendLine();
+
+    // 17 blank
+    fillBlankLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine(); sendLine();
+    sendLine(); sendLine();
+
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackTop; y++)
+      sendLine();
+    // Lines (image)
+    for(int y = 0; y < targetYres / 2; y++)
+    {
+      char *pixels = (*frame)[y];
+      fillLine(pixels);
+      sendLine();
+    }
+    
+    // Black lines for vertical centering
+    fillBlackLine();
+    for(int y = 0; y < linesBlackBottom; y++)
+      sendLine();
+
+    // Half black, Half short
+    i = 0;
+    fillHalfBlack(i); fillShortSync(i);
+    sendLine();
+
+    // 4 short
+    i = 0;
+    fillShortSync(i); fillShortSync(i);
     sendLine(); sendLine();
   }
 };
