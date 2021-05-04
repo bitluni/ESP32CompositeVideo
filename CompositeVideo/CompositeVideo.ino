@@ -3,8 +3,9 @@
 
 //#define SKULL
 //#define LOGO
-#define VENUS
+//#define VENUS
 //#define DRAGON
+#define MAX
 
 #include "Matrix.h"
 #include "CompositeGraphics.h"
@@ -17,6 +18,7 @@
 #include "logo3d.h"
 #include "dragon.h"
 #include "lablogo.h"
+#include "maxheadroom.h"
 
 #include "font6x8.h"
 
@@ -40,6 +42,8 @@ Mesh<CompositeGraphics> model(dragon::vertexCount, dragon::vertices, 0, 0, drago
 Mesh<CompositeGraphics> model(logo3d::vertexCount, logo3d::vertices, 0, 0, logo3d::triangleCount, logo3d::triangles, logo3d::triangleNormals);
 #elif defined(SKULL)
 Mesh<CompositeGraphics> model(skull::vertexCount, skull::vertices, 0, 0, skull::triangleCount, skull::triangles, skull::triangleNormals);
+#elif defined(MAX)
+Mesh<CompositeGraphics> model(maxheadroom::vertexCount, maxheadroom::vertices, 0, 0, maxheadroom::triangleCount, maxheadroom::triangles, maxheadroom::triangleNormals);
 #endif
 Image<CompositeGraphics> image(lablogo::xres, lablogo::yres, lablogo::pixels);
 
@@ -86,6 +90,28 @@ void drawSkull()
   Matrix rotation = Matrix::rotation(u, 0, 1, 0) * Matrix::rotation(v, 1, 0, 0);
   Matrix m0 = perspective * Matrix::translation(-4, 1.7 * 0, 7) * rotation * Matrix::scaling(6);
   model.transform(m0, rotation);
+  model.drawTriangles(graphics, 40);
+  graphics.flush();
+}
+
+
+void drawMaxHeadroom()
+{
+  static Matrix perspective = Matrix::translation(graphics.xres / 2, graphics.yres / 2, 0) * Matrix::scaling(100 * composite.pixelAspect, 100, 100) * Matrix::perspective(90, 1, 10);
+  
+  //home position u=3 side-to-side, v=-1.5 up-and-down, t??? 0
+  static float u = 3, v = -1.5;
+  static int spinU = 1, spinV = 1;
+
+  //have max rotate w/in bounds, or whenever he randomly feels like changing direction
+  if ((u < 1.6) || (u > 4.6) || (!random(0,80)))spinU *= -1;
+  u += 0.05 * spinU;
+  if ((v < -1.7)||(v > -1.2)||(!random(0,20))) spinV *= -1;
+  v += 0.01 * spinV;
+
+  Matrix rotation = Matrix::rotation(u, 0, 1, 0) * Matrix::rotation(v, 1, 0, 0);
+  Matrix m0 = perspective * Matrix::translation(0, 2.2 * -1, 6) * rotation * Matrix::scaling(12);
+  model.transform(m0, rotation);  
   model.drawTriangles(graphics, 40);
   graphics.flush();
 }
@@ -142,6 +168,8 @@ void draw()
     drawDragon();
   #elif defined(SKULL)
     drawSkull();
+  #elif defined(MAX)
+    drawMaxHeadroom();
   #endif
   graphics.setTextColor(5);
   graphics.setCursor(30, 5);
