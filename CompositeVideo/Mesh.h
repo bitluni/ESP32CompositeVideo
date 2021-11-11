@@ -6,15 +6,15 @@ class Mesh
 {
   public:
   int vertexCount;
-  int triangleCount;
-  int edgeCount;
   const float (*vertices)[3];
+  int edgeCount;
+  const unsigned short (*edges)[2];
+  int triangleCount;
+  const unsigned short (*triangles)[3];
   const float (*triangleNormals)[3];
   short (*tvertices)[3];
   signed char (*tTriNormals)[3];
-  const unsigned short (*triangles)[3];
-  const unsigned short (*edges)[2];
-  
+
   Mesh(int vertCount, const float verts[][3], int edgeCount_ = 0, const unsigned short edges_[][2] = 0, int triCount = 0, const unsigned short tris[][3] = 0, const float triNorms[][3] = 0)
     :vertexCount(vertCount),
     vertices(verts),
